@@ -17,6 +17,10 @@
  * for a DBP 611 telephone (closed contact when handheld is lifted) & with recording to WAV file
  * contact for switch button 0 is closed when handheld is lifted
  * 
+ *  
+ * Rob, june 2025
+ * Added code to add a pir sensor that plays ringring.wav when someone is approaching the phone
+ *
  * GNU GPL v3.0 license
  * 
  */
@@ -38,6 +42,7 @@
 // And those used for inputs
 #define HOOK_PIN 0
 #define PLAYBACK_BUTTON_PIN 1
+#define PIR_PIN 2 //ROB
 
 #define noINSTRUMENT_SD_WRITE
 
@@ -45,16 +50,19 @@
 // Audio initialisation code can be generated using the GUI interface at https://www.pjrc.com/teensy/gui/
 // Inputs
 AudioSynthWaveform          waveform1; // To create the "beep" sfx
-AudioInputI2S               i2s2; // I2S input from microphone on audio shield
 AudioPlaySdWavX              playWav1; // Play 44.1kHz 16-bit PCM greeting WAV file
+AudioPlaySdWavX              playWav2; // Play 44.1kHz 16-bit PCM ringring WAV file
+AudioInputI2S               i2s2; // I2S input from microphone on audio shield
 AudioRecordQueue            queue1; // Creating an audio buffer in memory before saving to SD
 AudioMixer4                 mixer; // Allows merging several inputs to same output
+AudioMixer4                 mixer1; // Allows merging several inputs to same output
 AudioOutputI2S              i2s1; // I2S interface to Speaker/Line Out on Audio shield
-AudioConnection patchCord1(waveform1, 0, mixer, 0); // wave to mixer 
-AudioConnection patchCord3(playWav1, 0, mixer, 1); // wav file playback mixer
-AudioConnection patchCord4(mixer, 0, i2s1, 0); // mixer output to speaker (L)
-AudioConnection patchCord6(mixer, 0, i2s1, 1); // mixer output to speaker (R)
-AudioConnection patchCord5(i2s2, 0, queue1, 0); // mic input to queue (L)
+AudioConnection          patchCord1(waveform1, 0, mixer, 0);
+AudioConnection          patchCord2(playWav1, 0, mixer, 1);
+AudioConnection          patchCord3(playWav2, 0, mixer1, 0);
+AudioConnection          patchCord4(i2s2, 0, queue1, 0);
+AudioConnection          patchCord5(mixer, 0, i2s1, 0);
+AudioConnection          patchCord6(mixer1, 0, i2s1, 1);
 AudioControlSGTL5000      sgtl5000_1;
 
 // Filename to save audio recording on SD card
@@ -62,12 +70,14 @@ char filename[15];
 // The file object itself
 File frec;
 
-// Use long 40ms debounce time on both switches
+// Use long 40ms debounce time on all switches
 Bounce buttonRecord = Bounce(HOOK_PIN, 40);
 Bounce buttonPlay = Bounce(PLAYBACK_BUTTON_PIN, 40);
+Bounce pir = Bounce(PIR_PIN, 40);//Rob
+
 
 // Keep track of current state of the device
-enum Mode {Initialising, Ready, Prompting, Recording, Playing};
+enum Mode {Initialising, Ready, Prompting, Recording, Playing, Ringing};//ROB
 Mode mode = Mode::Initialising;
 
 float beep_volume = 0.04f; // not too loud :-)
@@ -101,6 +111,7 @@ void setup() {
   // Configure the input pins
   pinMode(HOOK_PIN, INPUT_PULLUP);
   pinMode(PLAYBACK_BUTTON_PIN, INPUT_PULLUP);
+  pinMode(PIR_PIN, INPUT_PULLUP);
 
   // Audio connections require memory, and the record queue
   // uses this memory to buffer incoming audio.
@@ -141,13 +152,13 @@ void setup() {
 
   // Add SD Card
 //    MTP.addFilesystem(SD, "SD Card");
-    MTP.addFilesystem(SD, "Kais Audio guestbook"); // choose a nice name for the SD card volume to appear in your file explorer
+    MTP.addFilesystem(SD, "IenR Audio Gastboek"); // choose a nice name for the SD card volume to appear in your file explorer
     Serial.println("Added SD card via MTP");
     MTPcheckInterval = MTP.storage()->get_DeltaDeviceCheckTimeMS();
     
     // Value in dB
-//  sgtl5000_1.micGain(15);
-  sgtl5000_1.micGain(5); // much lower gain is required for the AOM5024 electret capsule
+  sgtl5000_1.micGain(15);
+  //sgtl5000_1.micGain(5); // much lower gain is required for the AOM5024 electret capsule
 
   // Synchronise the Time object used in the program code with the RTC time provider.
   // See https://github.com/PaulStoffregen/Time
@@ -164,7 +175,8 @@ void loop() {
   // First, read the buttons
   buttonRecord.update();
   buttonPlay.update();
-
+  pir.update();
+  
   switch(mode){
     case Mode::Ready:
       // Falling edge occurs when the handset is lifted --> 611 telephone
@@ -176,8 +188,39 @@ void loop() {
         //playAllRecordings();
         playLastRecording();
       }
+       else if(pir.fallingEdge()) {
+        // Person detected now ring
+      Serial.println("person detected");
+        mode = Mode::Ringing; print_mode();   
+      }
       break;
 
+         case Mode::Ringing:
+      // Play RingRing
+      playWav2.play("ringring.wav");    
+      // Wait until the  message has finished playing
+//      while (playWav2.isPlaying()) {
+      while (!playWav2.isStopped()) {
+        // Check whether the handset is picked up
+        buttonRecord.update();
+        buttonPlay.update();
+        // Handset is replaced
+        if(buttonRecord.fallingEdge()) {
+          playWav2.stop();
+          mode = Mode::Prompting; print_mode();
+          return;
+        }
+        if(buttonPlay.fallingEdge()) {
+          playWav2.stop();
+          //playAllRecordings();
+          playLastRecording();
+          return;
+        }
+       
+      }
+     mode = Mode::Ready; print_mode(); 
+      break;
+      
     case Mode::Prompting:
       // Wait a second for users to put the handset to their ear
       wait(1000);
@@ -201,8 +244,9 @@ void loop() {
           playLastRecording();
           return;
         }
-        
+
       }
+
       // Debug message
       Serial.println("Starting Recording");
       // Play the tone sound effect
@@ -222,6 +266,9 @@ void loop() {
         stopRecording();
         // Play audio tone to confirm recording has ended
         end_Beep();
+        Serial.println("Start wait");
+        wait(10000); //halting the entire program so theat the PIR is not activated to play ringring.wav when people are walking away from the phone.
+        Serial.println("End wait");
       }
       else {
         continueRecording();
@@ -453,10 +500,14 @@ void wait(unsigned int milliseconds) {
   while (msec <= milliseconds) {
     buttonRecord.update();
     buttonPlay.update();
+    pir.update();//ROB
     if (buttonRecord.fallingEdge()) Serial.println("Button (pin 0) Press");
     if (buttonPlay.fallingEdge()) Serial.println("Button (pin 1) Press");
+    if (pir.fallingEdge()) Serial.println("Pir (pin 2) active");
+    
     if (buttonRecord.risingEdge()) Serial.println("Button (pin 0) Release");
     if (buttonPlay.risingEdge()) Serial.println("Button (pin 1) Release");
+    if (pir.risingEdge()) Serial.println("Pir (pin 2) inactive");
   }
 }
 
@@ -542,5 +593,6 @@ void print_mode(void) { // only for debugging
   else if(mode == Mode::Recording)  Serial.println(" Recording");
   else if(mode == Mode::Playing)    Serial.println(" Playing");
   else if(mode == Mode::Initialising)  Serial.println(" Initialising");
+  else if(mode == Mode::Ringing)  Serial.println(" Ringing");
   else Serial.println(" Undefined");
 }
