@@ -1,8 +1,31 @@
 # audio-guestbook
 The audio guestbook is a converted telephone handset that guests can use to leave recorded messages at weddings, parties and other events, as sold by companies such as "After the Tone", "Fête Fone", "Life on Record", "At the Beep", and others.
 
+---
 Watch the full step-by-step tutorial on how to use the code here to build your own at https://youtu.be/dI6ielrP1SE
- 
+## Added pir sensor and ringing sound
+I adjusted the original code to make it appear that the phone is ringing its bells when someone approaches it.
+
+Added hardware (compared to the original):
+
+   * 1x pir sensor connected to pin 2 of the Teensy
+   * 1x Audio amplifierboard (PAM8403 2x3w amplifier) connected to the line out of the Teensy
+   * 2x 3w 4ohm small speakers (one replaces the speaker in the handset, the second is in the body of the phone and replaces the bells)
+   * Optional: two 10Kohm potentiometers (place them in between the line-out of the teensy audio board and the line -in of the PAM8403). This setup enables the user to adjust the volume of the ringing and the volume of the speaker in the handset seperately.
+
+The Sd card must now contain two audiofiles:
+
+   * greeting.wav (audiofile with a greeting message)
+   * ringring.wav (audiofile with a greeting message)\
+
+The mixercode has been adjusted so that the ringring play trough the right audiochannel. The other sounds play trough the left channel.
+
+DISCLAIMER:
+Im not a programmer, and it took me quite a while to be able to adjust the code to work. Some adjustments or HELP would be nice:
+
+    I added a waiting period at the end of the recording mode so that the ringring.wav is not actived by the PIR sensor when people are walking away from the phone. Tis is far from ideal because its halts the entire program of the phone.
+
+
  ---
 ## Disabled MTP during recording
 In some cases, the MTP capability (allowing file transfer without removing the SD card) seems to interfere with recording. MTP medium-change checking is thus _disabled_ during recording. A suitable message is sent to the serial monitor so you can see when it's been enabled.
