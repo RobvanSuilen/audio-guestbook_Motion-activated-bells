@@ -22,8 +22,7 @@ The mixercode has been adjusted so that the ringring play trough the right audio
 
 DISCLAIMER:
 Im not a programmer, and it took me quite a while to be able to adjust the code to work. Some adjustments or HELP would be nice:
-
-    I added a waiting period at the end of the recording mode so that the ringring.wav is not actived by the PIR sensor when people are walking away from the phone. Tis is far from ideal because its halts the entire program of the phone.
+I added a waiting period at the end of the recording mode so that the ringring.wav is not actived by the PIR sensor when people are walking away from the phone. Tis is far from ideal because its halts the entire program of the phone.
 
 
  ---
